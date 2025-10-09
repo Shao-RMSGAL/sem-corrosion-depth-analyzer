@@ -444,7 +444,7 @@ class ImageManipulatorApp:
                 ignore_rows = DEFAULT_TOP_PIXEL_IGNORE
                 corr_threshold = DEFAULT_CORROSION_THRESHOLD
 
-            with open(str(params_path), 'w') as f:
+            with open(str(params_path), 'w', encoding='utf-8') as f:
                 f.write("SEM Corrosion Analysis Parameters and Results\n")
                 f.write("=" * 50 + "\n\n")
 
@@ -510,7 +510,7 @@ class ImageManipulatorApp:
             params = {}
             original_filepath = ""
 
-            with open(params_file, 'r') as f:
+            with open(params_file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
 
             # Extract parameters from the file
@@ -566,7 +566,8 @@ class ImageManipulatorApp:
             else:
                 # Ask user to locate the original image
                 messagebox.showwarning("Original Image Not Found",
-                                       f"Original image not found at: {original_filepath}\n"
+                                       f"Original image not found at: {
+                                           original_filepath}\n"
                                        "Please select the original image file.")
 
                 new_filepath = filedialog.askopenfilename(
