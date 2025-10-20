@@ -34,6 +34,8 @@ class ImageManipulatorApp:
         self.corrosion_depth_threshold_entry = None
         self.threshold_slider = None
         self.tilt_slider = None
+        self.tilt_up_button = None
+        self.tilt_down_button = None
 
         self.mask = np.empty((0, 0), dtype=np.uint8)
         self.void_ratio = np.empty(0, dtype=np.float64)
@@ -70,6 +72,7 @@ class ImageManipulatorApp:
         self.corrosion_depth_threshold.trace_add('write', self.update_image)
 
     def setup_gui(self):
+
         # Main container with padding
         main_container = tk.Frame(self.root, bg='lightgray')
         main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -209,6 +212,22 @@ class ImageManipulatorApp:
                                     orient=tk.HORIZONTAL, variable=self.tilt_var, length=400,
                                     relief=tk.SUNKEN, bd=1).pack(side=tk.LEFT, padx=(10, 0),
                                                                  fill=tk.X, expand=True)
+
+        # Create a frame for the up/down buttons
+        button_frame = tk.Frame(tilt_container)
+        button_frame.pack(side=tk.LEFT, padx=(5, 0))
+
+        # Up button (on top)
+        self.tilt_up_button = tk.Button(button_frame, text="▲", width=2,
+                                        command=lambda: self.tilt_var.set(
+                                            min(45, self.tilt_var.get() + 0.1)))
+        self.tilt_up_button.pack(side=tk.TOP)
+
+        # Down button (on bottom)
+        self.tilt_down_button = tk.Button(button_frame, text="▼", width=2,
+                                          command=lambda: self.tilt_var.set(
+                                              max(-45, self.tilt_var.get() - 0.1)))
+        self.tilt_down_button.pack(side=tk.TOP)
 
         # Paned window for side-by-side display
         paned_window = tk.PanedWindow(main_container, orient=tk.HORIZONTAL,
@@ -474,6 +493,8 @@ class ImageManipulatorApp:
                     f"Deepest corrosion depth (μm): {self.deepest_corrosion:.3f}\n")
                 f.write(
                     f"Total loss ratio (%): {self.total_loss_ratio * 100:.3f}\n")
+                f.write(
+                    f"Corrosion depth from top (μm): {(float(self.top_bottom_distance.get()) - float(self.deepest_corrosion)) * 100:.3f}\n")
 
                 if self.analysis_image is not None:
                     f.write(
@@ -913,7 +934,11 @@ class ImageManipulatorApp:
 
 def main():
     root = tk.Tk()
+    icon = ImageTk.PhotoImage(file="tamu.png")
+    root.iconphoto(False, icon)
+
     app = ImageManipulatorApp(root)
+
     root.mainloop()
 
 
