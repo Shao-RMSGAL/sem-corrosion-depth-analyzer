@@ -11,6 +11,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # Default number of pixels per micrometer.
 PIX_PER_UM = 14.8
 DEFAULT_CORROSION_THRESHOLD = 5.0
+DEFAULT_SURFACE_THRESHOLD = 50.0
 DEFAULT_TOP_PIXEL_IGNORE = 100
 
 
@@ -32,6 +33,7 @@ class ImageManipulatorApp:
         self.crop_pixels_per_um_entry = None
         self.ignore_top_pixel_rows_entry = None
         self.corrosion_depth_threshold_entry = None
+        self.surface_depth_threshold_entry = None
         self.threshold_slider = None
         self.tilt_slider = None
         self.tilt_up_button = None
@@ -39,6 +41,7 @@ class ImageManipulatorApp:
 
         self.mask = np.empty((0, 0), dtype=np.uint8)
         self.void_ratio = np.empty(0, dtype=np.float64)
+        self.half_corrosion = 0
         self.filepath = ""
         self.deepest_corrosion = 0.0
         self.total_loss_ratio = 0.0
@@ -54,6 +57,8 @@ class ImageManipulatorApp:
             value=str(DEFAULT_TOP_PIXEL_IGNORE))
         self.corrosion_depth_threshold = tk.StringVar(
             value=str(DEFAULT_CORROSION_THRESHOLD))
+        self.surface_depth_threshold = tk.StringVar(
+            value=str(DEFAULT_SURFACE_THRESHOLD))
         self.pixels_per_micrometer = tk.StringVar(value=str(PIX_PER_UM))
         self.tilt_var = tk.DoubleVar(value=0.0)
         self.threshold_value = tk.IntVar(value=0)
@@ -70,6 +75,7 @@ class ImageManipulatorApp:
         self.pixels_per_micrometer.trace_add('write', self.update_image)
         self.ignore_top_rows.trace_add('write', self.update_image)
         self.corrosion_depth_threshold.trace_add('write', self.update_image)
+        self.surface_depth_threshold.trace_add('write', self.update_image)
 
     def setup_gui(self):
 
@@ -155,6 +161,14 @@ class ImageManipulatorApp:
                  font=('Arial', 9, 'bold')).pack()
         self.corrosion_depth_threshold_entry = tk.Entry(min_threshold, textvariable=self.corrosion_depth_threshold, width=10,
                                                         relief=tk.SUNKEN, bd=1, font=('Arial', 9)).pack()
+
+        # Second threshold for surface definition
+        surf_threshold = tk.Frame(crop_row)
+        surf_threshold.pack(side=tk.LEFT, padx=20)
+        tk.Label(surf_threshold, text="Surface depletion threshold (%)",
+                 font=('Arial', 9, 'bold')).pack()
+        self.surface_depth_threshold_entry = tk.Entry(surf_threshold, textvariable=self.surface_depth_threshold, width=10,
+                                                      relief=tk.SUNKEN, bd=1, font=('Arial', 9)).pack()
 
         # Top-bottom distance information
         pixels_ignore = tk.Frame(crop_row)
@@ -458,10 +472,13 @@ class ImageManipulatorApp:
                                   or DEFAULT_TOP_PIXEL_IGNORE)
                 corr_threshold = float(
                     self.corrosion_depth_threshold.get() or DEFAULT_CORROSION_THRESHOLD)
+                surf_threshold = float(
+                    self.surface_depth_threshold.get() or DEFAULT_SURFACE_THRESHOLD)
             except ValueError:
                 pix_per_um = PIX_PER_UM
                 ignore_rows = DEFAULT_TOP_PIXEL_IGNORE
                 corr_threshold = DEFAULT_CORROSION_THRESHOLD
+                surf_threshold = DEFAULT_CORROSION_THRESHOLD
 
             with open(str(params_path), 'w', encoding='utf-8') as f:
                 f.write("SEM Corrosion Analysis Parameters and Results\n")
@@ -484,6 +501,7 @@ class ImageManipulatorApp:
                 f.write(f"Pixels per micrometer: {pix_per_um}\n")
                 f.write(f"Ignore top pixel rows: {ignore_rows}\n")
                 f.write(f"Corrosion depth threshold (%): {corr_threshold}\n\n")
+                f.write(f"Surface depth threshold (%): {surf_threshold}\n\n")
 
                 # Analysis results
                 f.write("ANALYSIS RESULTS:\n")
@@ -495,6 +513,10 @@ class ImageManipulatorApp:
                     f"Total loss ratio (%): {self.total_loss_ratio * 100:.3f}\n")
                 f.write(
                     f"Corrosion depth from top (μm): {(float(self.top_bottom_distance.get()) - float(self.deepest_corrosion)) * 100:.3f}\n")
+                f.write(
+                    f"Corrosion Surface depth (μm): {self.half_corrosion:.3f}\n")
+                f.write(
+                    f"Distance from corrosion surface to corrosion depth (μm): {self.deepest_corrosion - self.half_corrosion:.3f}\n")
 
                 if self.analysis_image is not None:
                     f.write(
@@ -563,6 +585,8 @@ class ImageManipulatorApp:
                         params['ignore_top'] = value
                     elif key == "Corrosion depth threshold (%)":
                         params['corr_threshold'] = value
+                    elif key == "Surface depth threshold (%)":
+                        params['surf_threshold'] = value
 
             # Check if original image file exists
             if original_filepath and os.path.exists(original_filepath):
@@ -587,8 +611,6 @@ class ImageManipulatorApp:
             else:
                 # Ask user to locate the original image
                 messagebox.showwarning("Original Image Not Found",
-                                       f"Original image not found at: {
-                                           original_filepath}\n"
                                        "Please select the original image file.")
 
                 new_filepath = filedialog.askopenfilename(
@@ -635,6 +657,8 @@ class ImageManipulatorApp:
                 'ignore_top', str(DEFAULT_TOP_PIXEL_IGNORE)))
             self.corrosion_depth_threshold.set(params.get(
                 'corr_threshold', str(DEFAULT_CORROSION_THRESHOLD)))
+            self.surface_depth_threshold.set(params.get(
+                'surf_threshold', str(DEFAULT_SURFACE_THRESHOLD)))
 
             # Update the image display with the loaded parameters
             self.update_image()
@@ -918,6 +942,16 @@ class ImageManipulatorApp:
         if self.deepest_corrosion > 0:
             self.ax.axvline(x=self.deepest_corrosion, color='g', linestyle='--',
                             alpha=0.7, label=f'Deepest Corrosion: {self.deepest_corrosion:.2f} μm')
+
+        # Find the index where the surface threshold is crossed
+        surf_threshold = float(
+            self.surface_depth_threshold.get() or DEFAULT_SURFACE_THRESHOLD)/100  # Convert to percent
+
+        self.half_corrosion = x[np.argmax(self.void_ratio < surf_threshold)]
+
+        # Mark the half corrosion point
+        self.ax.axvline(x=self.half_corrosion, color='m', linestyle='--',
+                        alpha=0.7, label=f'Half-depletion point: {self.half_corrosion:.2f} μm')
 
         # Set labels and title
         self.ax.set_xlabel('Depth (micrometers)')
